@@ -1109,7 +1109,7 @@ function drawDailyPercentiles(parent, W, H) {
     positions.set(ts, totalW);
     if (i < dates.length - 1) {
       const daysDiff = (dates[i+1] - ts) / DAY_MS;
-      if (daysDiff > GAP_THRESHOLD) {
+      if (daysDiff >= GAP_THRESHOLD) {
         breaks.push({ xStart: totalW, xEnd: totalW + GAP_PX, days: Math.round(daysDiff) });
         totalW += GAP_PX;
       } else {
@@ -1118,6 +1118,14 @@ function drawDailyPercentiles(parent, W, H) {
     }
   });
   totalW += PX_PER_DAY;
+  // Trailing gap: if the most recent data is stale, show a squiggle at the right edge
+  if (dates.length > 0) {
+    const trailingDays = (+d3.timeDay(new Date()) - dates[dates.length - 1]) / DAY_MS;
+    if (trailingDays >= GAP_THRESHOLD) {
+      breaks.push({ xStart: totalW, xEnd: totalW + GAP_PX, days: Math.round(trailingDays) });
+      totalW += GAP_PX;
+    }
+  }
   const cx = ts => positions.get(ts);
 
   // ── y scale ──────────────────────────────────────────────
