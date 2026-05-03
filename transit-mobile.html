@@ -170,6 +170,19 @@ select{
   border-radius:3px;color:var(--text);font-size:11px;font-family:var(--font)}
 .cmp-sel{padding:3px 6px;background:var(--surface2);border:1px solid var(--border);
   border-radius:3px;color:var(--text);font-size:11px;font-family:var(--font)}
+/* ── Hour range editor ── */
+#f-hr-editor{display:none;margin-top:4px;border:1px solid var(--border);border-radius:4px;overflow:hidden}
+#f-hr-editor.open{display:block}
+.hre-row{display:flex;align-items:center;gap:3px;padding:3px 5px;border-bottom:1px solid var(--border)}
+.hre-row:last-child{border-bottom:none}
+.hre-lbl{flex:1;min-width:0;padding:2px 4px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:11px;font-family:var(--font)}
+.hre-hr{width:34px;padding:2px 3px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:11px;font-family:var(--font);text-align:center}
+.hre-del{padding:0 5px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1.4}
+.hre-del:hover{color:#ef4040}
+.hre-add{width:100%;padding:4px;background:none;border:none;border-top:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:11px;font-family:var(--font);text-align:left}
+.hre-add:hover{color:var(--accent)}
+#hr-edit-toggle{padding:2px 6px;font-size:10px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:3px;cursor:pointer;font-family:var(--font);margin-top:3px}
+#hr-edit-toggle:hover{color:var(--text);border-color:var(--muted)}
 </style>
 </head>
 <body>
@@ -237,11 +250,15 @@ select{
     </div>
     <div class="fg">
       <div class="fg-label">Hour of Day</div>
+      <div class="chips" id="f-hr-chips" style="flex-wrap:wrap;gap:3px;margin-bottom:4px"></div>
       <div class="rng">
         <input type="number" id="f-hr0" min="0" max="23" value="0" inputmode="numeric">
         <span>–</span>
         <input type="number" id="f-hr1" min="0" max="23" value="23" inputmode="numeric">
+        <span style="font-size:10px;color:var(--muted)">h</span>
       </div>
+      <button id="hr-edit-toggle" onclick="toggleHrEditor()">⚙ ranges</button>
+      <div id="f-hr-editor"></div>
     </div>
     <div class="fg">
       <div class="fg-label">Duration (minutes)</div>
@@ -336,6 +353,22 @@ const WD_ORDER = [1,2,3,4,5,6,7];
 const MON = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const PALETTE = d3.schemeTableau10;
 
+// ── Named hour ranges ─── editable in the sidebar; persisted to localStorage ──
+const HOUR_RANGES_DEFAULT = [
+  { label: 'AM Peak',  hr0:  7, hr1:  9 },
+  { label: 'Midday',   hr0: 10, hr1: 16 },
+  { label: 'PM Peak',  hr0: 17, hr1: 20 },
+  { label: 'Evening',  hr0: 20, hr1: 22 },
+  { label: 'All day',  hr0:  0, hr1: 23 },
+];
+let HOUR_RANGES = (function(){
+  try { const s = localStorage.getItem('hourRanges'); if(s) return JSON.parse(s); } catch(e){}
+  return HOUR_RANGES_DEFAULT.map(r => ({...r}));
+})();
+function saveHourRanges() {
+  try { localStorage.setItem('hourRanges', JSON.stringify(HOUR_RANGES)); } catch(e){}
+}
+
 // ═══════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════
@@ -348,6 +381,7 @@ const F = {
   dir:    new Set(),
   dow:    new Set(),
   hr0: 0, hr1: 23,
+  hrBuckets: new Set(),
   dur0: null, dur1: null,
   mon:    new Set(),
   yr:     new Set(),
@@ -472,16 +506,22 @@ function applyFilter() {
       if      (F.split === 'direction')    k = d.direction;
       else if (F.split === 'weekday')      k = WD[d.weekday] || `WD${d.weekday}`;
       else if (F.split === 'hour_bucket') {
-        if      (d.hour >= 7  && d.hour <= 9)  k = 'AM peak (7–9)';
-        else if (d.hour >= 17 && d.hour <= 20) k = 'PM peak (17–20)';
-        else if (d.hour >= 6  && d.hour <= 22) k = 'Off-peak (day)';
-        else                                    k = 'Night';
+        HOUR_RANGES.forEach(r => {
+          if (d.hour >= r.hr0 && d.hour <= r.hr1 &&
+              (F.hrBuckets.size === 0 || F.hrBuckets.has(r.label))) {
+            if (!GROUPS[r.label]) GROUPS[r.label] = [];
+            GROUPS[r.label].push(d);
+          }
+        });
+        return; // handled inline above, skip k-based push
       }
       else if (F.split === 'month')  k = MON[d.month] || `M${d.month}`;
       else if (F.split === 'year')   k = `${d.year}`;
       else if (F.split === 'route')  k = d.route;
-      if (!GROUPS[k]) GROUPS[k] = [];
-      GROUPS[k].push(d);
+      if (k !== undefined) {
+        if (!GROUPS[k]) GROUPS[k] = [];
+        GROUPS[k].push(d);
+      }
     });
     // Sort groups meaningfully
     if (F.split === 'weekday') {
@@ -565,16 +605,26 @@ function buildFilterUI() {
     document.getElementById('f-route').closest('.fg').style.display = 'none';
   }
 
-  // Hour range
-  on('f-hr0','change', e => { F.hr0 = +e.target.value; update(); });
-  on('f-hr1','change', e => { F.hr1 = +e.target.value; update(); });
+  // Hour range chips + inputs
+  rebuildHrFilterChips();
+  on('f-hr0','change', e => { F.hr0 = +e.target.value; syncHrFilterChips(); update(); });
+  on('f-hr1','change', e => { F.hr1 = +e.target.value; syncHrFilterChips(); update(); });
 
   // Duration range
   on('f-dur0','change', e => { F.dur0 = e.target.value ? +e.target.value : null; update(); });
   on('f-dur1','change', e => { F.dur1 = e.target.value ? +e.target.value : null; update(); });
 
   // Split by
-  on('f-split','change', e => { F.split = e.target.value; update(); });
+  on('f-split','change', e => {
+    F.split = e.target.value;
+    F.hrBuckets.clear();
+    if (F.split === 'hour_bucket') {
+      F.hr0 = 0; F.hr1 = 23;
+      const i0 = document.getElementById('f-hr0'), i1 = document.getElementById('f-hr1');
+      if (i0) i0.value = 0; if (i1) i1.value = 23;
+    }
+    syncHrFilterChips(); update();
+  });
 }
 
 function chipGroup(id, items, onToggle) {
@@ -608,6 +658,7 @@ function update() {
   applyFilter();
   renderStatsBar();
   draw();
+  syncHrFilterChips();
 }
 
 function draw() {
@@ -636,6 +687,103 @@ function draw() {
 // ═══════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════
+function rebuildHrFilterChips() {
+  const cont = document.getElementById('f-hr-chips');
+  if (!cont) return;
+  cont.innerHTML = '';
+  HOUR_RANGES.forEach(r => {
+    const c = document.createElement('button');
+    c.className = 'chip';
+    c.textContent = r.label;
+    c.dataset.label = r.label;
+    c.dataset.hr0 = r.hr0; c.dataset.hr1 = r.hr1;
+    c.addEventListener('click', () => {
+      if (F.split === 'hour_bucket') {
+        if (F.hrBuckets.has(r.label)) F.hrBuckets.delete(r.label);
+        else F.hrBuckets.add(r.label);
+      } else {
+        F.hr0 = r.hr0; F.hr1 = r.hr1;
+        document.getElementById('f-hr0').value = r.hr0;
+        document.getElementById('f-hr1').value = r.hr1;
+      }
+      syncHrFilterChips(); update();
+    });
+    cont.appendChild(c);
+  });
+}
+function syncHrFilterChips() {
+  const chips = document.querySelectorAll('#f-hr-chips .chip');
+  if (F.split === 'hour_bucket') {
+    const counts = {};
+    HOUR_RANGES.forEach(r => {
+      counts[r.label] = (FILTERED || []).filter(d => d.hour >= r.hr0 && d.hour <= r.hr1).length;
+    });
+    chips.forEach(c => {
+      const lbl = c.dataset.label || c.textContent.replace(/ \u00b7.*$/, '').trim();
+      c.dataset.label = lbl;
+      const n = counts[lbl] || 0;
+      c.textContent = n > 0 ? `${lbl} \u00b7 ${n}` : lbl;
+      c.style.opacity = n > 0 ? '' : '0.35';
+      c.classList.toggle('on', F.hrBuckets.has(lbl));
+    });
+  } else {
+    chips.forEach(c => {
+      const lbl = c.dataset.label || c.textContent.replace(/ \u00b7.*$/, '').trim();
+      c.dataset.label = lbl;
+      c.textContent = lbl;
+      c.style.opacity = '';
+      c.classList.toggle('on', +c.dataset.hr0 === F.hr0 && +c.dataset.hr1 === F.hr1);
+    });
+  }
+}
+function renderHrRangeEditor() {
+  const ed = document.getElementById('f-hr-editor');
+  if (!ed) return;
+  ed.innerHTML = '';
+  HOUR_RANGES.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'hre-row';
+    row.innerHTML =
+      `<input class="hre-lbl" type="text" value="${r.label}" placeholder="Label">` +
+      `<input class="hre-hr" type="number" min="0" max="23" value="${r.hr0}">` +
+      `<span style="font-size:10px;color:var(--muted)">–</span>` +
+      `<input class="hre-hr" type="number" min="0" max="23" value="${r.hr1}">` +
+      `<button class="hre-del" title="Delete">×</button>`;
+    const lblIn  = row.querySelector('.hre-lbl');
+    const hrs    = row.querySelectorAll('.hre-hr');
+    const delBtn = row.querySelector('.hre-del');
+    function commit() {
+      r.label = lblIn.value; r.hr0 = +hrs[0].value; r.hr1 = +hrs[1].value;
+      saveHourRanges(); rebuildHrFilterChips(); syncHrFilterChips();
+      if (VIEW === 'compare' && CMP.dim === 'hour') renderCmpSides();
+    }
+    lblIn.addEventListener('change', commit);
+    hrs[0].addEventListener('change', commit);
+    hrs[1].addEventListener('change', commit);
+    delBtn.addEventListener('click', () => {
+      HOUR_RANGES.splice(i, 1);
+      saveHourRanges(); rebuildHrFilterChips(); syncHrFilterChips(); renderHrRangeEditor();
+      if (VIEW === 'compare' && CMP.dim === 'hour') renderCmpSides();
+    });
+    ed.appendChild(row);
+  });
+  const addBtn = document.createElement('button');
+  addBtn.className = 'hre-add';
+  addBtn.textContent = '+ Add range';
+  addBtn.addEventListener('click', () => {
+    HOUR_RANGES.push({ label: 'New', hr0: 0, hr1: 23 });
+    saveHourRanges(); rebuildHrFilterChips(); renderHrRangeEditor();
+    if (VIEW === 'compare' && CMP.dim === 'hour') renderCmpSides();
+  });
+  ed.appendChild(addBtn);
+}
+function toggleHrEditor() {
+  const ed  = document.getElementById('f-hr-editor');
+  const btn = document.getElementById('hr-edit-toggle');
+  const open = ed.classList.toggle('open');
+  btn.textContent = open ? '▲ done' : '⚙ ranges';
+  if (open) renderHrRangeEditor();
+}
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
@@ -1615,11 +1763,51 @@ function renderCmpSides() {
     document.getElementById('cmp-a-val')?.addEventListener('change',e=>{st.A.val=+e.target.value;if(VIEW==='compare')draw();});
     document.getElementById('cmp-b-val')?.addEventListener('change',e=>{st.B.val=+e.target.value;if(VIEW==='compare')draw();});
   } else if (dim==='hour') {
-    el.innerHTML=`<div class="cmp-side"><span class="cmp-pill a">A</span><input class="cmp-hr" type="number" id="cmp-a-hr0" min="0" max="23" value="${st.A.hr0}"><span class="cmp-lbl">–</span><input class="cmp-hr" type="number" id="cmp-a-hr1" min="0" max="23" value="${st.A.hr1}"><span class="cmp-lbl">h</span></div><div class="cmp-sep"></div><div class="cmp-side"><span class="cmp-pill b">B</span><input class="cmp-hr" type="number" id="cmp-b-hr0" min="0" max="23" value="${st.B.hr0}"><span class="cmp-lbl">–</span><input class="cmp-hr" type="number" id="cmp-b-hr1" min="0" max="23" value="${st.B.hr1}"><span class="cmp-lbl">h</span></div>`;
-    document.getElementById('cmp-a-hr0')?.addEventListener('change',e=>{st.A.hr0=+e.target.value;if(VIEW==='compare')draw();});
-    document.getElementById('cmp-a-hr1')?.addEventListener('change',e=>{st.A.hr1=+e.target.value;if(VIEW==='compare')draw();});
-    document.getElementById('cmp-b-hr0')?.addEventListener('change',e=>{st.B.hr0=+e.target.value;if(VIEW==='compare')draw();});
-    document.getElementById('cmp-b-hr1')?.addEventListener('change',e=>{st.B.hr1=+e.target.value;if(VIEW==='compare')draw();});
+    const _hrChips = side => HOUR_RANGES.map(r =>
+      `<button class="chip cmp-hr-chip" data-side="${side}" data-hr0="${r.hr0}" data-hr1="${r.hr1}">${r.label}</button>`
+    ).join('');
+    el.innerHTML=`
+      <div class="cmp-side" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div style="display:flex;align-items:center;gap:5px">
+          <span class="cmp-pill a">A</span>
+          <input class="cmp-hr" type="number" id="cmp-a-hr0" min="0" max="23" value="${st.A.hr0}">
+          <span class="cmp-lbl">–</span>
+          <input class="cmp-hr" type="number" id="cmp-a-hr1" min="0" max="23" value="${st.A.hr1}">
+          <span class="cmp-lbl">h</span>
+        </div>
+        <div class="chips" style="flex-wrap:wrap;gap:3px">${_hrChips('a')}</div>
+      </div>
+      <div class="cmp-sep"></div>
+      <div class="cmp-side" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div style="display:flex;align-items:center;gap:5px">
+          <span class="cmp-pill b">B</span>
+          <input class="cmp-hr" type="number" id="cmp-b-hr0" min="0" max="23" value="${st.B.hr0}">
+          <span class="cmp-lbl">–</span>
+          <input class="cmp-hr" type="number" id="cmp-b-hr1" min="0" max="23" value="${st.B.hr1}">
+          <span class="cmp-lbl">h</span>
+        </div>
+        <div class="chips" style="flex-wrap:wrap;gap:3px">${_hrChips('b')}</div>
+      </div>`;
+    function syncCmpHrChips() {
+      el.querySelectorAll('.cmp-hr-chip').forEach(c => {
+        const obj = c.dataset.side === 'a' ? st.A : st.B;
+        c.classList.toggle('on', +c.dataset.hr0 === obj.hr0 && +c.dataset.hr1 === obj.hr1);
+      });
+    }
+    el.querySelectorAll('.cmp-hr-chip').forEach(c => {
+      c.addEventListener('click', () => {
+        const s = c.dataset.side, obj = s === 'a' ? st.A : st.B;
+        obj.hr0 = +c.dataset.hr0; obj.hr1 = +c.dataset.hr1;
+        document.getElementById(`cmp-${s}-hr0`).value = obj.hr0;
+        document.getElementById(`cmp-${s}-hr1`).value = obj.hr1;
+        syncCmpHrChips(); if(VIEW==='compare') draw();
+      });
+    });
+    syncCmpHrChips();
+    document.getElementById('cmp-a-hr0')?.addEventListener('change',e=>{st.A.hr0=+e.target.value;syncCmpHrChips();if(VIEW==='compare')draw();});
+    document.getElementById('cmp-a-hr1')?.addEventListener('change',e=>{st.A.hr1=+e.target.value;syncCmpHrChips();if(VIEW==='compare')draw();});
+    document.getElementById('cmp-b-hr0')?.addEventListener('change',e=>{st.B.hr0=+e.target.value;syncCmpHrChips();if(VIEW==='compare')draw();});
+    document.getElementById('cmp-b-hr1')?.addEventListener('change',e=>{st.B.hr1=+e.target.value;syncCmpHrChips();if(VIEW==='compare')draw();});
   } else if (dim==='route') {
     if(!st.A.val){st.A.val=routes[0];st.B.val=routes[1]||routes[0];}
     const opts=routes.map(r=>`<option value="${r}">${r}</option>`).join('');
