@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,17 +11,26 @@
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{
+:root,[data-theme="dark"]{
   --bg:#0f1117;--surface:#181b26;--surface2:#1f2335;--border:#2a2f45;
   --text:#dde3f0;--muted:#6b7799;--accent:#5b8df5;--accent2:#f5855b;
   --font:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --chart-grid:#2a2f45;--chart-label:#6b7799;--chart-subdued:#4a5170;
+  --legend-bg:rgba(15,17,23,.82);
 }
-html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px}
+[data-theme="light"]{
+  --bg:#f0f2f8;--surface:#ffffff;--surface2:#e8ebf5;--border:#cdd2e8;
+  --text:#1a1e2e;--muted:#6878a0;--accent:#2f64d4;--accent2:#d45e20;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --chart-grid:#cdd2e8;--chart-label:#6878a0;--chart-subdued:#8898bc;
+  --legend-bg:rgba(240,242,248,.92);
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;transition:background .2s,color .2s}
 #app{display:flex;flex-direction:column;height:100%}
 
 /* ── HEADER ── */
 #hdr{display:flex;align-items:center;gap:12px;padding:8px 14px;
-  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;user-select:none}
+  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;user-select:none;transition:background .2s,border-color .2s}
 #hdr h1{font-size:14px;font-weight:600;white-space:nowrap}
 #hdr-meta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .spacer{flex:1}
@@ -117,6 +126,7 @@ select{width:100%;padding:4px 7px;background:var(--surface2);border:1px solid va
     <h1>Transit Analysis</h1>
     <span id="hdr-meta">Loading…</span>
     <div class="spacer"></div>
+    <button class="btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">☀</button>
     <button class="btn" id="btn-svg">Export SVG</button>
     <button class="btn" id="btn-png">Export PNG</button>
     <button class="btn btn-accent" id="btn-refresh">↻ Refresh</button>
@@ -378,7 +388,7 @@ async function load() {
     document.getElementById('loading').style.textAlign = 'center';
     document.getElementById('loading').style.padding = '24px';
     document.getElementById('loading').innerHTML =
-      `<div style="max-width:420px;line-height:1.7;font-size:12px;color:#8892a4">
+      `<div style="max-width:420px;line-height:1.7;font-size:12px;color:var(--muted)">
         <div style="font-size:15px;color:#f5855b;margin-bottom:12px">⚠ Could not fetch data</div>
         <b>${e.message}</b>${hint}
        </div>`;
@@ -575,21 +585,37 @@ function draw() {
 // ═══════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') !== 'light';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('theme-btn').textContent = isDark ? '🌙' : '☀';
+  try { localStorage.setItem('theme', isDark ? 'light' : 'dark'); } catch(e){}
+  draw();
+}
+// restore saved theme
+(function(){
+  try { const t = localStorage.getItem('theme'); if(t) { document.documentElement.setAttribute('data-theme',t); const btn=document.getElementById('theme-btn'); if(btn) btn.textContent = t==='light' ? '🌙' : '☀'; } } catch(e){}
+})();
+
 function mkSvg(parent, W, H) {
   return d3.select(parent).append('svg')
     .attr('xmlns','http://www.w3.org/2000/svg')
     .attr('width',W).attr('height',H)
-    .style('background','#0f1117');
+    .style('background',cssVar('--bg'));
 }
 
 function axes(g, xScale, yScale, W, H, m, xLabel, yLabel) {
   // Grid
   g.append('g').attr('class','grid')
     .call(d3.axisLeft(yScale).tickSize(-W).tickFormat(''))
-    .call(g=>g.selectAll('line').attr('stroke','#2a2f45').attr('stroke-dasharray','2 3'));
+    .call(g=>g.selectAll('line').attr('stroke',cssVar('--chart-grid')).attr('stroke-dasharray','2 3'));
   g.append('g').attr('class','grid').attr('transform',`translate(0,${H})`)
     .call(d3.axisBottom(xScale).tickSize(-H).tickFormat(''))
-    .call(g=>g.selectAll('line').attr('stroke','#2a2f45').attr('stroke-dasharray','2 3'));
+    .call(g=>g.selectAll('line').attr('stroke',cssVar('--chart-grid')).attr('stroke-dasharray','2 3'));
 
   // Axes
   g.append('g').attr('class','axis').attr('transform',`translate(0,${H})`)
@@ -599,10 +625,10 @@ function axes(g, xScale, yScale, W, H, m, xLabel, yLabel) {
 
   // Labels
   if(xLabel) g.append('text').attr('x',W/2).attr('y',H+38)
-    .attr('fill','#6b7799').attr('text-anchor','middle').attr('font-size',11).attr('font-family','var(--font)').text(xLabel);
+    .attr('fill',cssVar('--chart-label')).attr('text-anchor','middle').attr('font-size',11).attr('font-family','var(--font)').text(xLabel);
   if(yLabel) g.append('text').attr('transform','rotate(-90)')
     .attr('x',-H/2).attr('y',-m.l+12)
-    .attr('fill','#6b7799').attr('text-anchor','middle').attr('font-size',11).attr('font-family','var(--font)').text(yLabel);
+    .attr('fill',cssVar('--chart-label')).attr('text-anchor','middle').attr('font-size',11).attr('font-family','var(--font)').text(yLabel);
 }
 
 function legend(svg, W, m, entries) {
@@ -613,7 +639,7 @@ function legend(svg, W, m, entries) {
     row.append('line').attr('x1',0).attr('x2',14).attr('y1',7).attr('y2',7)
       .attr('stroke',PALETTE[i%10]).attr('stroke-width',2.5);
     row.append('text').attr('x',18).attr('y',11)
-      .attr('fill','#dde3f0').attr('font-size',10).attr('font-family','var(--font)').text(label);
+      .attr('fill',cssVar('--text')).attr('font-size',10).attr('font-family','var(--font)').text(label);
   });
 }
 
@@ -662,9 +688,9 @@ function drawECDF(parent, W, H) {
     const v = d3.quantile(refVals,p);
     if(v==null) return;
     g.append('line').attr('x1',x(v)).attr('x2',x(v)).attr('y1',0).attr('y2',h)
-      .attr('stroke','#2a2f45').attr('stroke-dasharray','3 3').attr('stroke-width',1);
+      .attr('stroke',cssVar('--chart-grid')).attr('stroke-dasharray','3 3').attr('stroke-width',1);
     g.append('text').attr('x',x(v)+3).attr('y',h-4)
-      .attr('fill','#6b7799').attr('font-size',9).attr('font-family','var(--font)')
+      .attr('fill',cssVar('--chart-label')).attr('font-size',9).attr('font-family','var(--font)')
       .text(`P${Math.round(p*100)}`);
   });
 
@@ -725,9 +751,9 @@ function drawQuantile(parent, W, H) {
   [.1,.25,.5,.75,.9].forEach(p => {
     g.append('line')
       .attr('x1',x(p)).attr('x2',x(p)).attr('y1',0).attr('y2',h)
-      .attr('stroke','#2a2f45').attr('stroke-dasharray','3 3').attr('stroke-width',1);
+      .attr('stroke',cssVar('--chart-grid')).attr('stroke-dasharray','3 3').attr('stroke-width',1);
     g.append('text').attr('x',x(p)+3).attr('y',10)
-      .attr('fill','#6b7799').attr('font-size',9).attr('font-family','var(--font)')
+      .attr('fill',cssVar('--chart-label')).attr('font-size',9).attr('font-family','var(--font)')
       .text(`P${Math.round(p*100)}`);
   });
 
@@ -784,14 +810,14 @@ function drawViolin(parent, W, H) {
   // Grid (horizontal only)
   g.append('g').attr('class','grid')
     .call(d3.axisLeft(y).tickSize(-w).tickFormat(''))
-    .call(g=>g.selectAll('line').attr('stroke','#2a2f45').attr('stroke-dasharray','2 3'));
+    .call(g=>g.selectAll('line').attr('stroke',cssVar('--chart-grid')).attr('stroke-dasharray','2 3'));
 
   g.append('g').attr('class','axis').attr('transform',`translate(0,${h})`)
     .call(d3.axisBottom(x))
     .call(g=>g.selectAll('text').attr('transform','rotate(-30)').attr('text-anchor','end').attr('font-size',10));
   g.append('g').attr('class','axis').call(d3.axisLeft(y));
   g.append('text').attr('transform','rotate(-90)').attr('x',-h/2).attr('y',-40)
-    .attr('fill','#6b7799').attr('text-anchor','middle').attr('font-size',11).attr('font-family','var(--font)')
+    .attr('fill',cssVar('--chart-label')).attr('text-anchor','middle').attr('font-size',11).attr('font-family','var(--font)')
     .text('Duration (minutes)');
 
   const bw = 1.2;
@@ -909,7 +935,7 @@ function drawHeatmap(parent, W, H) {
     .call(g=>g.selectAll('text').attr('font-size',10).attr('dx',-4));
 
   g.append('text').attr('x',w/2).attr('y',h+38)
-    .attr('fill','#6b7799').attr('text-anchor','middle').attr('font-size',11).attr('font-family','var(--font)')
+    .attr('fill',cssVar('--chart-label')).attr('text-anchor','middle').attr('font-size',11).attr('font-family','var(--font)')
     .text('Hour of day');
 
   // Metric selector (median / mean / p90)
@@ -1046,7 +1072,7 @@ function drawHistogram(parent, W, H) {
       row.append('rect').attr('width',12).attr('height',12).attr('rx',2)
         .attr('fill',PALETTE[i%10]).attr('fill-opacity',.6);
       row.append('text').attr('x',16).attr('y',10)
-        .attr('fill','#dde3f0').attr('font-size',10).attr('font-family','var(--font)').text(label);
+        .attr('fill',cssVar('--text')).attr('font-size',10).attr('font-family','var(--font)').text(label);
     });
   }
 
@@ -1087,7 +1113,7 @@ function drawScatter(parent, W, H) {
   // Draw canvas dots
   ctx.clearRect(0,0,W,H);
   // Background match
-  ctx.fillStyle='#0f1117';
+  ctx.fillStyle=cssVar('--bg');
   ctx.fillRect(0,0,W,H);
 
   ge.forEach(([,recs],i) => {
@@ -1204,7 +1230,7 @@ function drawDailyPercentiles(parent, W, H) {
   parent.appendChild(wrapper);
 
   const yPanel = document.createElement('div');
-  yPanel.style.cssText = `flex-shrink:0;width:${m.l}px;background:#0f1117;`;
+  yPanel.style.cssText = `flex-shrink:0;width:${m.l}px;background:${cssVar('--bg')};`;
   wrapper.appendChild(yPanel);
 
   const chartPanel = document.createElement('div');
@@ -1214,12 +1240,12 @@ function drawDailyPercentiles(parent, W, H) {
   // ── Y-axis SVG (fixed) ────────────────────────────────────
   const svgY = d3.select(yPanel).append('svg')
     .attr('width', m.l).attr('height', H)
-    .style('background','#0f1117').style('display','block')
+    .style('background',cssVar('--bg')).style('display','block')
     .style('position','relative');  // override "#viz svg{position:absolute}" rule
 
   svgY.append('text').attr('transform','rotate(-90)')
     .attr('x', -(m.t + h/2)).attr('y', 13)
-    .attr('fill','#6b7799').attr('text-anchor','middle')
+    .attr('fill',cssVar('--chart-label')).attr('text-anchor','middle')
     .attr('font-size',11).attr('font-family','var(--font)')
     .text('Travel time (seconds)');
 
@@ -1235,7 +1261,7 @@ function drawDailyPercentiles(parent, W, H) {
   const svg = d3.select(chartPanel).append('svg')
     .attr('xmlns','http://www.w3.org/2000/svg')
     .attr('width', svgW).attr('height', H)
-    .style('background','#0f1117').style('display','block')
+    .style('background',cssVar('--bg')).style('display','block')
     .style('position','relative');  // override "#viz svg{position:absolute}" rule
   const g = svg.append('g').attr('transform',`translate(0,${m.t})`);
 
@@ -1243,7 +1269,7 @@ function drawDailyPercentiles(parent, W, H) {
   g.append('g').attr('class','grid')
     .call(d3.axisLeft(y).tickSize(-totalW).tickFormat(''))
     .call(gg => {
-      gg.selectAll('line').attr('stroke','#2a2f45').attr('stroke-dasharray','2 3');
+      gg.selectAll('line').attr('stroke',cssVar('--chart-grid')).attr('stroke-dasharray','2 3');
       gg.select('.domain').remove();
     });
 
@@ -1253,7 +1279,7 @@ function drawDailyPercentiles(parent, W, H) {
     .forEach(({s}) =>
       g.append('line')
         .attr('x1',0).attr('x2',totalW).attr('y1',y(s)).attr('y2',y(s))
-        .attr('stroke','#4a5170').attr('stroke-dasharray','6 4').attr('stroke-width',1.2));
+        .attr('stroke',cssVar('--chart-subdued')).attr('stroke-dasharray','6 4').attr('stroke-width',1.2));
 
   // 3. Gap squiggles — drawn BEFORE labels so labels sit on top
   breaks.forEach(({xStart, xEnd, days}) => {
@@ -1262,23 +1288,23 @@ function drawDailyPercentiles(parent, W, H) {
     g.append('rect')
       .attr('x', xc-9).attr('width', 18)
       .attr('y', 0).attr('height', h)
-      .attr('fill','#0f1117');
+      .attr('fill',cssVar('--bg'));
     // Sinusoidal squiggle
     const pts = d3.range(37).map(i => {
       const t = i/36;
       return [xc + 5 * Math.sin(t * Math.PI * 6), t * h];
     });
     g.append('path').attr('d', d3.line()(pts))
-      .attr('fill','none').attr('stroke','#5a6384').attr('stroke-width',1.8);
+      .attr('fill','none').attr('stroke',cssVar('--chart-subdued')).attr('stroke-width',1.8);
     // Serif lines top and bottom
     g.append('line').attr('x1',xc-7).attr('x2',xc+7).attr('y1',0).attr('y2',0)
-      .attr('stroke','#5a6384').attr('stroke-width',1.5);
+      .attr('stroke',cssVar('--chart-subdued')).attr('stroke-width',1.5);
     g.append('line').attr('x1',xc-7).attr('x2',xc+7).attr('y1',h).attr('y2',h)
-      .attr('stroke','#5a6384').attr('stroke-width',1.5);
+      .attr('stroke',cssVar('--chart-subdued')).attr('stroke-width',1.5);
     // Gap label above chart
     g.append('text').attr('x',xc).attr('y',-10)
       .attr('text-anchor','middle').attr('font-size',9).attr('font-family','var(--font)')
-      .attr('fill','#8892a4').text(`${days}d gap`);
+      .attr('fill',cssVar('--muted')).text(`${days}d gap`);
   });
 
   // 4. X axis ticks + date labels — drawn AFTER gaps so they're never masked
@@ -1286,11 +1312,11 @@ function drawDailyPercentiles(parent, W, H) {
   dates.forEach(ts => {
     const xp = cx(ts);
     xAxis.append('line').attr('x1',xp).attr('x2',xp).attr('y1',0).attr('y2',5)
-      .attr('stroke','#6b7799').attr('stroke-width',1);
+      .attr('stroke',cssVar('--chart-label')).attr('stroke-width',1);
     xAxis.append('text')
       .attr('x',xp).attr('y',7)
       .attr('text-anchor','end')
-      .attr('font-size',10).attr('font-family','var(--font)').attr('fill','#6b7799')
+      .attr('font-size',10).attr('font-family','var(--font)').attr('fill',cssVar('--chart-label'))
       .attr('transform',`rotate(-55,${xp},7)`)
       .text(d3.timeFormat('%d %b')(new Date(ts)));
   });
@@ -1310,7 +1336,7 @@ function drawDailyPercentiles(parent, W, H) {
     g.selectAll(null).data(pts).join('circle')
       .attr('cx', d=>cx(d.ts)).attr('cy', d=>y(d.v))
       .attr('r',4).attr('fill',color)
-      .attr('stroke','#0f1117').attr('stroke-width',1.2)
+      .attr('stroke',cssVar('--bg')).attr('stroke-width',1.2)
       .on('mousemove',(evt,d) => {
         const st = byDate.get(d.ts);
         tip(`<b>${d3.timeFormat('%a %d %b')(new Date(d.ts))}</b><br>
@@ -1336,7 +1362,7 @@ function drawDailyPercentiles(parent, W, H) {
     'gap:3px',
     'pointer-events:none',
     'z-index:10',
-    'background:rgba(15,17,23,0.82)',
+    `background:${cssVar('--legend-bg')}`,
     'padding:5px 8px',
     'border-radius:5px',
   ].join(';');
@@ -1345,9 +1371,9 @@ function drawDailyPercentiles(parent, W, H) {
     row.style.cssText = 'display:flex;align-items:center;gap:6px;';
     const dot = document.createElement('div');
     dot.style.cssText = `width:8px;height:8px;border-radius:50%;flex-shrink:0;` +
-                        `background:${color};border:1.5px solid #0f1117;`;
+                        `background:${color};border:1.5px solid ${cssVar('--bg')};`;
     const txt = document.createElement('span');
-    txt.style.cssText = `font-size:10px;color:#dde3f0;` +
+    txt.style.cssText = `font-size:10px;color:${cssVar('--text')};` +
                         `font-family:var(--font);white-space:nowrap;`;
     txt.textContent = label;
     row.appendChild(dot); row.appendChild(txt);
@@ -1401,7 +1427,7 @@ function exportPNG() {
   out.width=W*scale; out.height=H*scale;
   const ctx=out.getContext('2d');
   ctx.scale(scale,scale);
-  ctx.fillStyle='#0f1117';
+  ctx.fillStyle=cssVar('--bg');
   ctx.fillRect(0,0,W,H);
 
   const finish = () => {
@@ -1668,11 +1694,11 @@ function drawCompare(parent, W, H) {
 
   // Column headers — period label + date range + n
   el('text',{x:xA,y:mt-36,'text-anchor':'middle','font-size':'12','font-weight':'600',fill:'#5b8df5','font-family':'var(--font)'},'A');
-  el('text',{x:xA,y:mt-22,'text-anchor':'middle','font-size':'9.5',fill:'#6b7799','font-family':'var(--font)'},lblA);
-  el('text',{x:xA,y:mt-9, 'text-anchor':'middle','font-size':'9',  fill:'#4a5170','font-family':'var(--font)'},`n = ${stA.n.toLocaleString()}`);
+  el('text',{x:xA,y:mt-22,'text-anchor':'middle','font-size':'9.5',fill:cssVar('--chart-label'),'font-family':'var(--font)'},lblA);
+  el('text',{x:xA,y:mt-9, 'text-anchor':'middle','font-size':'9',  fill:cssVar('--chart-subdued'),'font-family':'var(--font)'},`n = ${stA.n.toLocaleString()}`);
   el('text',{x:xB,y:mt-36,'text-anchor':'middle','font-size':'12','font-weight':'600',fill:'#f5855b','font-family':'var(--font)'},'B');
-  el('text',{x:xB,y:mt-22,'text-anchor':'middle','font-size':'9.5',fill:'#6b7799','font-family':'var(--font)'},lblB);
-  el('text',{x:xB,y:mt-9, 'text-anchor':'middle','font-size':'9',  fill:'#4a5170','font-family':'var(--font)'},`n = ${stB.n.toLocaleString()}`);
+  el('text',{x:xB,y:mt-22,'text-anchor':'middle','font-size':'9.5',fill:cssVar('--chart-label'),'font-family':'var(--font)'},lblB);
+  el('text',{x:xB,y:mt-9, 'text-anchor':'middle','font-size':'9',  fill:cssVar('--chart-subdued'),'font-family':'var(--font)'},`n = ${stB.n.toLocaleString()}`);
 
   // Axis lines
   el('line',{x1:xA,x2:xA,y1:mt,y2:mt+h,stroke:'#3a3f58','stroke-width':'1'});
@@ -1706,8 +1732,8 @@ function drawCompare(parent, W, H) {
     const color = delta > 0 ? '#ef4040' : '#27ae60';
     const sign  = delta > 0 ? '+' : '';
 
-    el('circle',{cx:xA,cy:ya,r:'5',fill:'#5b8df5',stroke:'#0f1117','stroke-width':'1.5'});
-    el('circle',{cx:xB,cy:yb,r:'5',fill:'#f5855b',stroke:'#0f1117','stroke-width':'1.5'});
+    el('circle',{cx:xA,cy:ya,r:'5',fill:'#5b8df5',stroke:cssVar('--bg'),'stroke-width':'1.5'});
+    el('circle',{cx:xB,cy:yb,r:'5',fill:'#f5855b',stroke:cssVar('--bg'),'stroke-width':'1.5'});
 
     if (Math.abs(laA - ya) > 2)
       el('line',{x1:xA-6,y1:ya,x2:xA-gapAx-2,y2:laA,stroke:'#5b8df5','stroke-width':'0.7',opacity:'0.5'});
@@ -1717,11 +1743,11 @@ function drawCompare(parent, W, H) {
     el('text',{x:xA-gapAx-2,y:laA+4,'text-anchor':'end',  'font-size':'10',fill:'#5b8df5','font-family':'var(--font)'},fmtSec(aV));
     el('text',{x:xB+gapAx+2,y:laB+4,'text-anchor':'start','font-size':'10',fill:'#f5855b','font-family':'var(--font)'},fmtSec(bV));
 
-    el('text',{x:labelW-6,y:laM+4,'text-anchor':'end','font-size':'11',fill:'#dde3f0','font-family':'var(--font)'},stat.label);
-    el('line',{x1:labelW-2,y1:laM,x2:xA-6,y2:ya,stroke:'#2a2f45','stroke-width':'0.8'});
+    el('text',{x:labelW-6,y:laM+4,'text-anchor':'end','font-size':'11',fill:cssVar('--text'),'font-family':'var(--font)'},stat.label);
+    el('line',{x1:labelW-2,y1:laM,x2:xA-6,y2:ya,stroke:cssVar('--chart-grid'),'stroke-width':'0.8'});
 
     const mx = (xA + xB) / 2, my = (ya + yb) / 2;
-    el('rect',{x:mx-19,y:my-9,width:38,height:14,rx:'3',fill:'#0f1117',opacity:'0.88'});
+    el('rect',{x:mx-19,y:my-9,width:38,height:14,rx:'3',fill:cssVar('--bg'),opacity:'0.88'});
     el('text',{x:mx,y:my+3,'text-anchor':'middle','font-size':'9.5','font-weight':'700',fill:color,'font-family':'var(--font)'},`${sign}${pct}%`);
   });
 }
